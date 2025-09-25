@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 // Unified sync endpoint that syncs all connected services
 export async function POST(request: NextRequest) {
   try {

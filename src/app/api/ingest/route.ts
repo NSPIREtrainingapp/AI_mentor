@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { IngestData } from '@/types';
 
+export const dynamic = 'force-dynamic';
+
 // Verify API key for security
 function verifyApiKey(request: NextRequest): boolean {
   const apiKey = request.headers.get('x-api-key');

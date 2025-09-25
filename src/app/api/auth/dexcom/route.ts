@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+export const dynamic = 'force-dynamic';
+
 // Dexcom OAuth callback handler
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);

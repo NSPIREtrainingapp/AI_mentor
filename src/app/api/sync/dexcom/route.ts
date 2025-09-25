@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-// Sync Dexcom glucose data
+export const dynamic = 'force-dynamic';
+
+// Sync Dexcom CGM data
 export async function POST(request: NextRequest) {
   try {
     const { data: { user }, error: userError } = await supabase.auth.getUser();

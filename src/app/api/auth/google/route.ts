@@ -8,13 +8,17 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const error = searchParams.get('error');
+  
+  // TEMPORARY: Use production redirect URI since localhost isn't added to Google Console yet
+  const redirectUri = 'https://ai-mentor-three.vercel.app/api/auth/google';
+  const baseUrl = 'https://ai-mentor-three.vercel.app';
 
   if (error) {
-    return NextResponse.redirect('/dashboard?error=google_fit_auth_failed');
+    return NextResponse.redirect(new URL('/?error=google_fit_auth_failed', baseUrl!));
   }
 
   if (!code) {
-    return NextResponse.redirect('/dashboard?error=no_auth_code');
+    return NextResponse.redirect(new URL('/?error=no_auth_code', baseUrl!));
   }
 
   try {
@@ -26,9 +30,9 @@ export async function GET(request: NextRequest) {
       },
       body: new URLSearchParams({
         code,
-        client_id: process.env.GOOGLE_FIT_CLIENT_ID!,
-        client_secret: process.env.GOOGLE_FIT_CLIENT_SECRET!,
-        redirect_uri: `${process.env.NEXT_PUBLIC_SITE_URL}/api/auth/google`,
+        client_id: process.env.GOOGLE_CLIENT_ID!,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+        redirect_uri: redirectUri,
         grant_type: 'authorization_code',
       }),
     });
@@ -53,19 +57,51 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return NextResponse.redirect('/dashboard?success=google_fit_connected');
+    return NextResponse.redirect(new URL('/?success=google_fit_connected', baseUrl!));
   } catch (error) {
     console.error('Google Fit auth error:', error);
-    return NextResponse.redirect('/dashboard?error=google_fit_connection_failed');
+    return NextResponse.redirect(new URL('/?error=google_fit_connection_failed', baseUrl!));
   }
 }
 
 // Initiate Google Fit OAuth flow
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  
+  // Determine the correct redirect URI based on environment
+  const isDev = process.env.NODE_ENV === 'development';
+  const host = request.headers.get('host') || 'localhost:3000';
+  
+  // For now, always use production URI since it's the only one registered
+  const redirectUri = 'https://ai-mentor-three.vercel.app/api/auth/google';
+  
+  console.log('OAuth Debug:');
+  console.log('Client ID:', clientId);
+  console.log('Redirect URI:', redirectUri);
+  console.log('Host:', host);
+  console.log('Environment:', process.env.NODE_ENV);
+  
+  if (!clientId) {
+    console.error('GOOGLE_CLIENT_ID is not set!');
+    return NextResponse.json({ 
+      error: 'OAuth not configured',
+      debug: 'GOOGLE_CLIENT_ID environment variable is missing'
+    }, { status: 500 });
+  }
+  
+  // Validate the client ID format
+  if (!clientId.includes('.apps.googleusercontent.com')) {
+    console.error('Invalid GOOGLE_CLIENT_ID format:', clientId);
+    return NextResponse.json({ 
+      error: 'Invalid OAuth configuration',
+      debug: 'GOOGLE_CLIENT_ID appears to be malformed'
+    }, { status: 500 });
+  }
+  
   const googleFitAuthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   
-  googleFitAuthUrl.searchParams.set('client_id', process.env.GOOGLE_FIT_CLIENT_ID!);
-  googleFitAuthUrl.searchParams.set('redirect_uri', `${process.env.NEXT_PUBLIC_SITE_URL}/api/auth/google`);
+  googleFitAuthUrl.searchParams.set('client_id', clientId);
+  googleFitAuthUrl.searchParams.set('redirect_uri', redirectUri);
   googleFitAuthUrl.searchParams.set('scope', [
     'https://www.googleapis.com/auth/fitness.activity.read',
     'https://www.googleapis.com/auth/fitness.body.read',
@@ -76,5 +112,16 @@ export async function POST() {
   googleFitAuthUrl.searchParams.set('access_type', 'offline');
   googleFitAuthUrl.searchParams.set('prompt', 'consent');
 
-  return NextResponse.json({ authUrl: googleFitAuthUrl.toString() });
+  const finalUrl = googleFitAuthUrl.toString();
+  console.log('Final OAuth URL:', finalUrl);
+
+  // Return both the URL and debug info
+  return NextResponse.json({ 
+    authUrl: finalUrl,
+    debug: {
+      clientId: clientId.substring(0, 20) + '...', // Hide full client ID
+      redirectUri,
+      environment: process.env.NODE_ENV
+    }
+  });
 }

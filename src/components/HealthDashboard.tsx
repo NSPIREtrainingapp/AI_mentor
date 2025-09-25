@@ -28,16 +28,25 @@ export function HealthDashboard() {
 
   const fetchTodaysHealth = async () => {
     try {
+      // Get current session to ensure authentication
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        throw new Error('Not authenticated');
+      }
+
       const today = new Date().toISOString().split('T')[0];
       
+      // Try to get existing health data for today
       const { data, error } = await supabase
         .from('health_data')
         .select('*')
-        .eq('user_id', user?.id)
+        .eq('user_id', session.user.id)
         .eq('date', today)
-        .single();
+        .maybeSingle(); // Use maybeSingle instead of single to handle no results
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 is "not found"
+      if (error) {
+        console.error('Supabase error:', error);
         throw error;
       }
 
@@ -52,6 +61,52 @@ export function HealthDashboard() {
     } catch (err) {
       console.error('Error fetching health data:', err);
       setError('Failed to load health data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createTestData = async () => {
+    try {
+      setLoading(true);
+      
+      // Get current session to ensure authentication
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        alert('Not authenticated');
+        return;
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      
+      const testHealthData = {
+        user_id: session.user.id,
+        date: today,
+        sleep_hours: 7.5,
+        steps: 8500,
+        glucose: 95,
+        calories: 2100,
+        protein: 120
+      };
+
+      const { data, error } = await supabase
+        .from('health_data')
+        .upsert(testHealthData, {
+          onConflict: 'user_id,date'
+        })
+        .select();
+
+      if (error) {
+        console.error('Create test data error:', error);
+        alert(`Error creating test data: ${error.message}`);
+      } else {
+        alert('Test data created successfully!');
+        fetchTodaysHealth(); // Refresh the data
+      }
+    } catch (err) {
+      console.error('Unexpected error:', err);
+      alert('Unexpected error creating test data');
     } finally {
       setLoading(false);
     }
@@ -83,9 +138,17 @@ export function HealthDashboard() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Health Dashboard</h2>
-        <p className="text-sm text-gray-500">
-          Today: {new Date().toLocaleDateString()}
-        </p>
+        <div className="flex gap-4 items-center">
+          <p className="text-sm text-gray-500">
+            Today: {new Date().toLocaleDateString()}
+          </p>
+          <button
+            onClick={createTestData}
+            className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+          >
+            Create Test Data
+          </button>
+        </div>
       </div>
 
       {/* Health KPI Grid */}

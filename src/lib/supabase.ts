@@ -3,8 +3,16 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
 
-if (!process.env.NEXT_PUBLIC_SUPABASE_URL && typeof window !== 'undefined') {
-  console.warn('Please configure NEXT_PUBLIC_SUPABASE_URL in your environment variables');
+if (typeof window !== 'undefined') {
+  console.log('Supabase URL:', supabaseUrl);
+  console.log('Supabase Key exists:', !!supabaseAnonKey);
+  
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    console.error('NEXT_PUBLIC_SUPABASE_URL is not configured!');
+  }
+  if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    console.error('NEXT_PUBLIC_SUPABASE_ANON_KEY is not configured!');
+  }
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);

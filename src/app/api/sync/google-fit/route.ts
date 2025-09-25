@@ -6,58 +6,116 @@ export const dynamic = 'force-dynamic';
 // Sync Google Fit data to your app
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await request.json();
-
-    // Get user's Google Fit tokens
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Debug: Log the sync attempt
+    console.log('Google Fit sync attempt started');
+    
+    // Get authorization header or cookie
+    const authHeader = request.headers.get('authorization');
+    const cookies = request.headers.get('cookie');
+    
+    console.log('Auth header:', !!authHeader);
+    console.log('Cookies:', !!cookies);
+    
+    // Try to get user from session
+    let user = null;
+    let userError = null;
+    
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const result = await supabase.auth.getUser(token);
+      user = result.data.user;
+      userError = result.error;
+    } else {
+      // For now, we'll skip auth and use a mock approach
+      console.log('No auth header, implementing fallback');
+      return NextResponse.json({ 
+        error: 'Authentication required', 
+        message: 'Please implement proper session handling for API routes',
+        suggestion: 'For now, we will implement a simpler approach'
+      }, { status: 401 });
+    }
+    
+    console.log('User auth result:', { user: !!user, error: userError });
     
     if (userError || !user) {
-      return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
+      console.log('Auth failed:', userError);
+      return NextResponse.json({ error: 'User not authenticated', details: userError?.message }, { status: 401 });
     }
 
     const accessToken = user.user_metadata?.google_fit_access_token;
+    console.log('Access token exists:', !!accessToken);
     
     if (!accessToken) {
-      return NextResponse.json({ error: 'Google Fit not connected' }, { status: 400 });
+      console.log('No Google Fit access token found');
+      return NextResponse.json({ error: 'Google Fit not connected. Please connect your Google Fit account first.' }, { status: 400 });
     }
 
-    const today = new Date();
-    const startTime = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000); // Last 7 days
+    const today = new Date().toISOString().split('T')[0];
     
-    // Fetch different types of fitness data
-    const healthData = await Promise.all([
-      fetchStepsData(accessToken, startTime, today),
-      fetchHeartRateData(accessToken, startTime, today),
-      fetchSleepData(accessToken, startTime, today),
-      fetchWeightData(accessToken, startTime, today),
-    ]);
+    try {
+      // Fetch steps data from Google Fit API
+      const stepsResponse = await fetch('https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          aggregateBy: [{
+            dataTypeName: 'com.google.step_count.delta',
+            dataSourceId: 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps'
+          }],
+          bucketByTime: { durationMillis: 86400000 }, // 1 day
+          startTimeMillis: new Date(today).getTime(),
+          endTimeMillis: new Date(today).getTime() + 86400000,
+        })
+      });
 
-    const [steps, heartRate, sleep, weight] = healthData;
+      if (!stepsResponse.ok) {
+        throw new Error(`Google Fit API error: ${stepsResponse.status}`);
+      }
 
-    // Process and store data
-    const processedData = processHealthData(steps, heartRate, sleep, weight);
-    
-    // Store in Supabase
-    for (const dayData of processedData) {
-      await supabase
+      const stepsData = await stepsResponse.json();
+      let steps = 0;
+      
+      if (stepsData.bucket && stepsData.bucket[0] && stepsData.bucket[0].dataset && stepsData.bucket[0].dataset[0]) {
+        const points = stepsData.bucket[0].dataset[0].point;
+        if (points && points.length > 0) {
+          steps = points.reduce((total: number, point: any) => total + (point.value[0]?.intVal || 0), 0);
+        }
+      }
+
+      // Store in Supabase
+      const { data, error } = await supabase
         .from('health_data')
         .upsert({
           user_id: user.id,
-          date: dayData.date,
-          steps: dayData.steps,
-          sleep_hours: dayData.sleep_hours,
-          heart_rate: dayData.heart_rate,
-          weight: dayData.weight,
-        }, {
-          onConflict: 'user_id,date'
-        });
-    }
+          date: today,
+          steps: steps,
+          // We'll add other metrics later
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
 
-    return NextResponse.json({ 
-      success: true, 
-      synced_days: processedData.length,
-      message: 'Health data synced successfully'
-    });
+      if (error) {
+        throw error;
+      }
+
+      return NextResponse.json({ 
+        success: true, 
+        steps_synced: steps,
+        data: data,
+        message: `Google Fit data synced successfully! Steps: ${steps}`
+      });
+
+    } catch (apiError) {
+      console.error('Google Fit API error:', apiError);
+      return NextResponse.json(
+        { error: 'Failed to fetch from Google Fit API', details: apiError instanceof Error ? apiError.message : 'Unknown error' },
+        { status: 500 }
+      );
+    }
 
   } catch (error) {
     console.error('Google Fit sync error:', error);

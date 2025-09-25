@@ -8,6 +8,13 @@ const withPWA = require('next-pwa')({
 });
 
 const nextConfig: NextConfig = {
+  output: 'export',
+  trailingSlash: true,
+  basePath: '/AI_mentor',
+  assetPrefix: '/AI_mentor/',
+  images: {
+    unoptimized: true
+  },
   eslint: {
     dirs: ['src']
   },
